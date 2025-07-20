@@ -149,32 +149,88 @@ end
 
 local Routing = {}
 
-function Routing:new()
+function Routing:new(djotter)
     return setmetatable({
+        djotter = djotter,
         paths = {}
     }, {
         __index = Routing
     })
 end
 
-function Routing:add_path(path, buf_id, buf_type, content_type, content)
+function Routing:add_path(path, value)
     local normalized = Path:new(path).value
 
     if self.paths[normalized] then
         return false
     end
 
-    self.paths[normalized] = {
-        buf_id = buf_id,
-        buf_name = vim.api.nvim_buf_get_name(buf_id) or "[unnamed]",
-        buf_type = buf_type,
-        content_type = content_type,
-        content = content
-    }
+    value.buf_name = (
+        vim.api.nvim_buf_get_name(value.buf_id) or "[unnamed]"
+    )
+
+    log:print(
+        "Routing path '%s' to buffer '%s' (%s).",
+        normalized,
+        value.buf_name,
+        value.buf_type
+    )
+
+    self.paths[normalized] = value
+
     return true
 end
 
+function get_buffer_content(buf_id)
+    return table.concat(
+        vim.api.nvim_buf_get_lines(buf_id, 0, -1, true),
+        "\n"
+    )
+end
+
+function Routing:update_content(buf_id)
+    local path = self:get_path_by_buf_id(buf_id)
+
+    assert(path, string.format(
+        "Buffer %d has a callback attached but no path routed to it.",
+        buf_id
+    ))
+
+    local value = self.paths[path]
+
+    log:print(
+        "Updating content for path '%s' from buffer '%s'.",
+        path,
+        value.buf_name
+    )
+
+    local buf_type = value.buf_type
+    local content = nil
+    local content_type = buf_type
+
+    if not buf_type:match("^text/") then
+        local file_path = vim.api.nvim_buf_get_name(0)
+        content = io.open(file_path):read("*a")
+    else
+        content = get_buffer_content(buf_id)
+    end
+
+    if buf_type == "text/djot" then
+        content = self.djotter:to_html(content)
+        content_type = "text/html"
+    end
+
+    self.paths[path].content_type = content_type
+    self.paths[path].content = content
+end
+
 function Routing:delete_path(path)
+    log:print("Deleting path '%s'.", path)
+
+    local value = self.paths[path]
+
+    vim.api.nvim_del_autocmd(value.autocmd_id)
+
     self.paths[path] = nil
 end
 
@@ -310,13 +366,6 @@ end
 
 local djotter = nil
 
-local function get_buffer_content(buf_id)
-    return table.concat(
-        vim.api.nvim_buf_get_lines(buf_id, 0, -1, true),
-        "\n"
-    )
-end
-
 local function ws_add_buffer(opts)
     if #opts.fargs == 0 or #opts.fargs > 2 then
         cmd_error("Usage: :WSAddBuffer <path> [content-type]")
@@ -334,34 +383,20 @@ local function ws_add_buffer(opts)
     local buf_type = opts.fargs[2] or "text/djot"
     local content_type = buf_type
     local content = nil
+    local autocmd_id = vim.api.nvim_create_autocmd("BufWrite", {
+        buffer = buf_id,
+        callback = function(arg) routing:update_content(arg.buf) end
+    })
 
-    if not content_type:match("^text/") then
-        local file_path = vim.api.nvim_buf_get_name(0)
-        content = io.open(file_path):read("*a")
-    else
-        content = get_buffer_content(buf_id)
-    end
+    routing:add_path(path, {
+        buf_id = buf_id,
+        buf_type = opts.fargs[2] or "text/djot",
+        content_type = content_type,
+        content = content,
+        autocmd_id = autocmd_id
+    })
 
-    if content_type == "text/djot" then
-        content = djotter:to_html(content)
-        content_type = "text/html"
-    end
-
-    if routing:has_path(path) then
-        cmd_error("Path '%s' already exists.", path)
-        return
-    else
-        local buf_path = routing:get_path_by_buf_id(buf_id)
-        if buf_path then
-            cmd_error("Buffer is already bound to path '%s'.", buf_path)
-            return
-        end
-    end
-
-    routing:add_path(path, buf_id, buf_type, content_type, content)
-
-    -- TODO Set up event handler to update `content` when the buffer
-    -- changes.
+    routing:update_content(buf_id)
 end
 
 local function ws_delete_path(opts)
@@ -381,12 +416,17 @@ end
 
 local function ws_paths()
     for path, value in pairs(routing.paths) do
+        local length = 0
+        if value.content then
+            length = value.content:len()
+        end
+
         log:print(
             "Path '%s' is routed to '%s' (%s, length %d).",
             path,
             value.buf_name,
             value.content_type,
-            value.content:len()
+            length
         )
     end
 end
@@ -411,8 +451,8 @@ local M = {}
 -- they can specify.
 function M.init()
     log = Logger:new()
-    routing = Routing:new()
     djotter = Djotter:new()
+    routing = Routing:new(djotter)
 
     local new_cmd = vim.api.nvim_create_user_command
     new_cmd("WSAddBuffer", ws_add_buffer, { nargs = "*" })
