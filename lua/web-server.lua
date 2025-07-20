@@ -224,6 +224,14 @@ function Routing:update_content(buf_id)
     self.paths[path].content = content
 end
 
+function Routing:update_djot_paths()
+    for path, value in pairs(self.paths) do
+        if value.buf_type == "text/djot" then
+            self:update_content(value.buf_id)
+        end
+    end
+end
+
 function Routing:delete_path(path)
     log:print("Deleting path '%s'.", path)
 
@@ -431,17 +439,34 @@ local function ws_paths()
     end
 end
 
-local function ws_add_buffer_as_template()
-    -- TODO Update automatically if the buffer changes.
+local function ws_set_buffer_as_template()
+    if djotter.template_buf_name then
+        log:print(
+            "Unsetting '%s' as template.", djotter.template_buf_name
+        )
+
+        vim.api.nvim_del_autocmd(djotter.template_autocmd_id)
+    end
+
     local buf_id = vim.fn.bufnr()
     local buf_name = vim.api.nvim_buf_get_name(buf_id)
 
-    log:print(
-        "Adding '%s' as template for Djot conversion into HTML.",
-        buf_name
-    )
+    log:print("Setting '%s' as template.", buf_name)
 
-    djotter.template = get_buffer_content(buf_id)
+    local function update_template()
+        djotter.template = get_buffer_content(buf_id)
+        routing:update_djot_paths()
+    end
+
+    local autocmd_id = vim.api.nvim_create_autocmd("BufWrite", {
+        buffer = buf_id,
+        callback = update_template
+    })
+
+    djotter.template_buf_name = buf_name
+    djotter.template_autocmd_id = autocmd_id
+
+    update_template()
 end
 
 local M = {}
@@ -459,8 +484,8 @@ function M.init()
     new_cmd("WSDeletePath", ws_delete_path, { nargs = "*" })
     new_cmd("WSPaths", ws_paths, { nargs = 0 })
     new_cmd(
-        "WSAddBufferAsTemplate",
-        ws_add_buffer_as_template,
+        "WSSetBufferAsTemplate",
+        ws_set_buffer_as_template,
         { nargs = 0 }
     )
 
