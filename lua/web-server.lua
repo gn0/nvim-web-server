@@ -129,6 +129,24 @@ function Response:not_found(proto)
     })
 end
 
+local Path = {}
+
+function Path:new(raw)
+    local query_string = raw:match("?.*")
+    local normalized = raw:gsub("?.*", ""):gsub("/+", "/")
+
+    if normalized ~= "/" then
+        normalized = normalized:gsub("/$", "")
+    end
+
+    return setmetatable({
+        value = normalized,
+        query_string = query_string
+    }, {
+        __index = Path
+    })
+end
+
 local Routing = {}
 
 function Routing:new()
@@ -140,12 +158,15 @@ function Routing:new()
 end
 
 function Routing:add_path(path, buf_id, content_type, content)
-    if self.paths[path] then
+    local normalized = Path:new(path).value
+
+    if self.paths[normalized] then
         return false
     end
 
-    self.paths[path] = {
+    self.paths[normalized] = {
         buf_id = buf_id,
+        buf_name = vim.api.nvim_buf_get_name(buf_id) or "[unnamed]",
         content_type = content_type,
         content = content
     }
@@ -205,8 +226,10 @@ local function process_request(chunk)
     end
 
     if response == nil then
-        if routing:has_path(path) then
-            local value = routing.paths[path]
+        local normalized = Path:new(path).value
+
+        if routing:has_path(normalized) then
+            local value = routing.paths[normalized]
 
             response = Response:ok(
                 proto,
