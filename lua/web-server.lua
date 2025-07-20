@@ -338,8 +338,9 @@ end
 local function ws_paths()
     for path, value in pairs(routing.paths) do
         log:print(
-            "Path '%s' is routed to %s (length %d).",
+            "Path '%s' is routed to '%s' (%s, length %d).",
             path,
+            value.buf_name,
             value.content_type,
             value.content:len()
         )
