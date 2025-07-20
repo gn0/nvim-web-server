@@ -157,7 +157,7 @@ function Routing:new()
     })
 end
 
-function Routing:add_path(path, buf_id, content_type, content)
+function Routing:add_path(path, buf_id, buf_type, content_type, content)
     local normalized = Path:new(path).value
 
     if self.paths[normalized] then
@@ -167,6 +167,7 @@ function Routing:add_path(path, buf_id, content_type, content)
     self.paths[normalized] = {
         buf_id = buf_id,
         buf_name = vim.api.nvim_buf_get_name(buf_id) or "[unnamed]",
+        buf_type = buf_type,
         content_type = content_type,
         content = content
     }
@@ -272,7 +273,23 @@ local function get_first_header(html)
     return nil
 end
 
-local function djot_to_html(input)
+local Djotter = {}
+
+function Djotter:new()
+    local state = {
+        template = (
+            "<html>" ..
+            "<head>" ..
+            "<title>{{ title }}</title>" ..
+            "</head>" ..
+            "<body>{{ content }}</body>" ..
+            "</html>"
+        )
+    }
+    return setmetatable(state, { __index = Djotter })
+end
+
+function Djotter:to_html(input)
     local ast = djot.parse(input, false, function(warning)
         cmd_error(
             "Djot parse error: %s at byte position %d",
@@ -281,16 +298,22 @@ local function djot_to_html(input)
         )
     end)
 
-    local body = "<body>" .. djot.render_html(ast) .. "</body>"
-    local title = get_first_header(body) or ""
+    local content = djot.render_html(ast)
+    local title = get_first_header(content) or ""
 
     return (
-        "<html>" ..
-        "<head>" ..
-        "<title>" .. title .. "</title>" ..
-        "</head>" ..
-        body ..
-        "</html>"
+        self.template
+        :gsub("{{ title }}", title)
+        :gsub("{{ content }}", content)
+    )
+end
+
+local djotter = nil
+
+local function get_buffer_content(buf_id)
+    return table.concat(
+        vim.api.nvim_buf_get_lines(buf_id, 0, -1, true),
+        "\n"
     )
 end
 
@@ -308,21 +331,19 @@ local function ws_add_buffer(opts)
     end
 
     local buf_id = vim.fn.bufnr()
-    local content_type = opts.fargs[2] or "text/djot"
+    local buf_type = opts.fargs[2] or "text/djot"
+    local content_type = buf_type
     local content = nil
 
     if not content_type:match("^text/") then
         local file_path = vim.api.nvim_buf_get_name(0)
         content = io.open(file_path):read("*a")
     else
-        content = table.concat(
-            vim.api.nvim_buf_get_lines(buf_id, 0, -1, true),
-            "\n"
-        )
+        content = get_buffer_content(buf_id)
     end
 
     if content_type == "text/djot" then
-        content = djot_to_html(content)
+        content = djotter:to_html(content)
         content_type = "text/html"
     end
 
@@ -337,7 +358,7 @@ local function ws_add_buffer(opts)
         end
     end
 
-    routing:add_path(path, buf_id, content_type, content)
+    routing:add_path(path, buf_id, buf_type, content_type, content)
 
     -- TODO Set up event handler to update `content` when the buffer
     -- changes.
@@ -370,6 +391,19 @@ local function ws_paths()
     end
 end
 
+local function ws_add_buffer_as_template()
+    -- TODO Update automatically if the buffer changes.
+    local buf_id = vim.fn.bufnr()
+    local buf_name = vim.api.nvim_buf_get_name(buf_id)
+
+    log:print(
+        "Adding '%s' as template for Djot conversion into HTML.",
+        buf_name
+    )
+
+    djotter.template = get_buffer_content(buf_id)
+end
+
 local M = {}
 
 -- TODO Log into a file specified by the user.  `M.init` should accept a
@@ -378,13 +412,17 @@ local M = {}
 function M.init()
     log = Logger:new()
     routing = Routing:new()
+    djotter = Djotter:new()
 
     local new_cmd = vim.api.nvim_create_user_command
     new_cmd("WSAddBuffer", ws_add_buffer, { nargs = "*" })
     new_cmd("WSDeletePath", ws_delete_path, { nargs = "*" })
     new_cmd("WSPaths", ws_paths, { nargs = 0 })
-
-    -- TODO Add a command to set a CSS style file.
+    new_cmd(
+        "WSAddBufferAsTemplate",
+        ws_add_buffer_as_template,
+        { nargs = 0 }
+    )
 
     local server = create_server("127.0.0.1", 4999, function(socket)
         local request = ""
