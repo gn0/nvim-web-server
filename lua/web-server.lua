@@ -51,18 +51,34 @@ end
 
 local Response = { status = nil, value = nil }
 
-function Response:ok(proto, content_type, content)
+function Response:ok(proto, etag, content_type, content)
     return setmetatable({
         status = 200,
         value = string.format(
             "%s 200 OK\n" ..
             "Server: nvim-web-server\n" ..
+            'ETag: "' .. etag .. '"\n' ..
             "Content-Type: %s\n" ..
             "Content-Length: %d\n" ..
             "Connection: keep-alive\n" ..
             "\n" ..
             "%s\n",
             proto, content_type, content:len(), content
+        )
+    }, {
+        __index = Response
+    })
+end
+
+function Response:not_modified(proto, etag)
+    return setmetatable({
+        status = 304,
+        value = (
+            proto .. " 304 Not Modified\n" ..
+            "Server: nvim-web-server\n" ..
+            'ETag: "' .. etag .. '"\n' ..
+            -- "Connection: keep-alive\n" ..
+            "\n"
         )
     }, {
         __index = Response
@@ -220,6 +236,15 @@ function Routing:update_content(buf_id)
         content_type = "text/html"
     end
 
+    -- For binary files, `content` is a blob, and `vim.fn.sha256`
+    -- expects a string.
+    --
+    if vim.fn.type(content) == vim.v.t_blob then
+        self.paths[path].etag = vim.fn.sha256(vim.fn.string(content))
+    else
+        self.paths[path].etag = vim.fn.sha256(content)
+    end
+
     self.paths[path].content_type = content_type
     self.paths[path].content = content
 end
@@ -266,14 +291,14 @@ end
 
 local routing = nil
 
-local function process_request(chunk)
+local function process_request_line(request)
+    local request_line = request:match("[^\r\n]*")
     local method = nil
     local path = nil
     local proto = nil
-    local first_line = chunk:match("[^\r\n]*")
-    local response = nil
+    local bad = false
 
-    for index, word in ipairs(vim.split(first_line, "%s+")) do
+    for index, word in ipairs(vim.split(request_line, "%s+")) do
         if index == 1 then
             method = word
         elseif index == 2 then
@@ -281,34 +306,67 @@ local function process_request(chunk)
         elseif index == 3 then
             proto = word
         else
-            response = Response:bad(proto)
+            bad = true
             break
         end
     end
 
-    if proto == nil then
-        response = Response:bad("HTTP/1.1")
+    if method ~= "GET" or not proto then
+        bad = true
     end
 
-    if response == nil then
+    return request_line, method, path, proto, bad
+end
+
+local function process_request_header(request)
+    for line in string.gmatch(request, "[^\r\n]+") do
+        local field_name = line:match("^If%-None%-Match: *")
+
+        if field_name then
+            local value = line:sub(field_name:len() + 1):gsub('"', "")
+
+            if value then
+                return value
+            end
+
+            break
+        end
+    end
+end
+
+local function process_request(request)
+    local request_line, method, path, proto, bad = process_request_line(
+        request
+    )
+    local response = nil
+
+    if bad then
+        response = Response:bad(proto or "HTTP/1.1")
+    else
+        local if_none_match = process_request_header(request)
         local normalized = Path:new(path).value
 
-        if routing:has_path(normalized) then
+        if not routing:has_path(normalized) then
+            response = Response:not_found(proto)
+        else
             local value = routing.paths[normalized]
 
-            response = Response:ok(
-                proto,
-                value.content_type,
-                value.content
-            )
-        else
-            response = Response:not_found(proto)
+            if if_none_match and if_none_match == value.etag then
+                response = Response:not_modified(proto, value.etag)
+            else
+                response = Response:ok(
+                    proto,
+                    value.etag,
+                    value.content_type,
+                    value.content
+                )
+            end
         end
     end
 
     return {
         proto = proto,
-        request = first_line,
+        request = request_line,
         response = response
     }
 end
