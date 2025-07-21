@@ -421,12 +421,15 @@ function Djotter:to_html(input)
     end)
 
     local content = djot.render_html(ast)
+    local content_escaped = content:gsub("%%", "%%%%")
+
     local title = get_first_header(content) or ""
+    local title_escaped = title:gsub("%%", "%%%%")
 
     return (
         self.template
-        :gsub("{{ title }}", title)
-        :gsub("{{ content }}", content)
+        :gsub("{{ title }}", title_escaped)
+        :gsub("{{ content }}", content_escaped)
     )
 end
 
