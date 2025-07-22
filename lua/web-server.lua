@@ -298,12 +298,12 @@ local function process_request_line(request)
     local proto = nil
     local bad = false
 
-    for index, word in ipairs(vim.split(request_line, "%s+")) do
-        if index == 1 then
+    for word in request_line:gmatch("[^ ]+") do
+        if not method then
             method = word
-        elseif index == 2 then
+        elseif not path then
             path = word
-        elseif index == 3 then
+        elseif not proto then
             proto = word
         else
             bad = true
