@@ -532,10 +532,19 @@ end
 
 local M = {}
 
+local default_config = {
+    host = "127.0.0.1",
+    port = 4999
+}
+
+M.config = vim.deepcopy(default_config)
+
 -- TODO Log into a file specified by the user.  `M.init` should accept a
 -- table of options, with the log filename being an optional thing that
 -- they can specify.
-function M.init()
+function M.init(config)
+    M.config = vim.tbl_extend("force", default_config, config or {})
+
     log = Logger:new()
     djotter = Djotter:new()
     routing = Routing:new(djotter)
@@ -550,7 +559,10 @@ function M.init()
         { nargs = 0 }
     )
 
-    local server = create_server("127.0.0.1", 4999, function(socket)
+    local host = M.config.host
+    local port = M.config.port
+
+    local server = create_server(host, port, function(socket)
         local request = ""
         local result = nil
 
