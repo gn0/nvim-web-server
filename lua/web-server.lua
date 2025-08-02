@@ -2,10 +2,37 @@ local djot = require("web-server.djot")
 
 local Logger = {}
 
-function Logger:new()
+function Logger:new(filename)
     local buf_id = vim.api.nvim_create_buf(true, true)
+    local timer = nil
+    local empty = true
+
+    if filename then
+        -- Open `filename`.
+        --
+        vim.api.nvim_buf_call(buf_id, function()
+            vim.cmd.edit(filename)
+            empty = vim.fn.wordcount().bytes == 0
+        end)
+
+        -- Save the log buffer to `filename` every 5 minutes.
+        --
+        local dur_5m = 5 * 60 * 1000
+        timer = vim.uv.new_timer()
+        timer:start(dur_5m, dur_5m, vim.schedule_wrap(function()
+            vim.api.nvim_buf_call(buf_id, function()
+                vim.cmd.write()
+            end)
+        end))
+    end
+
     local win_id = vim.api.nvim_open_win(buf_id, 0, { split = "above" })
-    local state = { buf_id = buf_id, win_id = win_id, empty = true }
+    local state = {
+        buf_id = buf_id,
+        win_id = win_id,
+        empty = empty,
+        timer = timer
+    }
     return setmetatable(state, { __index = Logger })
 end
 
@@ -534,20 +561,18 @@ local M = {}
 
 local default_config = {
     host = "127.0.0.1",
-    port = 4999
+    port = 4999,
+    log_filename = nil
 }
 
 M.config = vim.deepcopy(default_config)
 
--- TODO Log into a file specified by the user.  `M.init` should accept a
--- table of options, with the log filename being an optional thing that
--- they can specify.
 function M.init(config)
     M.config = vim.tbl_extend("force", default_config, config or {})
 
-    log = Logger:new()
     djotter = Djotter:new()
     routing = Routing:new(djotter)
+    log = Logger:new(M.config.log_filename)
 
     local new_cmd = vim.api.nvim_create_user_command
     new_cmd("WSAddBuffer", ws_add_buffer, { nargs = "*" })
