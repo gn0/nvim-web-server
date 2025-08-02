@@ -2,7 +2,7 @@ local djot = require("web-server.djot")
 
 local Logger = {}
 
-function Logger:new(filename)
+function Logger.new(filename)
     local buf_id = vim.api.nvim_create_buf(true, true)
     local timer = nil
     local empty = true
@@ -78,7 +78,7 @@ end
 
 local Response = { status = nil, value = nil }
 
-function Response:ok(proto, etag, content_type, content)
+function Response.ok(proto, etag, content_type, content)
     return setmetatable({
         status = 200,
         value = string.format(
@@ -97,7 +97,7 @@ function Response:ok(proto, etag, content_type, content)
     })
 end
 
-function Response:not_modified(proto, etag)
+function Response.not_modified(proto, etag)
     return setmetatable({
         status = 304,
         value = (
@@ -112,7 +112,7 @@ function Response:not_modified(proto, etag)
     })
 end
 
-function Response:bad(proto)
+function Response.bad(proto)
     local content = (
         "<!DOCTYPE html>" ..
         "<html>" ..
@@ -142,7 +142,7 @@ function Response:bad(proto)
     })
 end
 
-function Response:not_found(proto)
+function Response.not_found(proto)
     local content = (
             "<!DOCTYPE html>" ..
             "<html>" ..
@@ -174,7 +174,7 @@ end
 
 local Path = {}
 
-function Path:new(raw)
+function Path.new(raw)
     local query_string = raw:match("?.*")
     local normalized = raw:gsub("?.*", ""):gsub("/+", "/")
 
@@ -192,7 +192,7 @@ end
 
 local Routing = {}
 
-function Routing:new(djotter)
+function Routing.new(djotter)
     return setmetatable({
         djotter = djotter,
         paths = {}
@@ -202,7 +202,7 @@ function Routing:new(djotter)
 end
 
 function Routing:add_path(path, value)
-    local normalized = Path:new(path).value
+    local normalized = Path.new(path).value
 
     if self.paths[normalized] then
         return false
@@ -248,7 +248,7 @@ function Routing:update_content(buf_id)
     )
 
     local buf_type = value.buf_type
-    local content = nil
+    local content
     local content_type = buf_type
 
     if not buf_type:match("^text/") then
@@ -277,7 +277,7 @@ function Routing:update_content(buf_id)
 end
 
 function Routing:update_djot_paths()
-    for path, value in pairs(self.paths) do
+    for _, value in pairs(self.paths) do
         if value.buf_type == "text/djot" then
             self:update_content(value.buf_id)
         end
@@ -362,26 +362,26 @@ local function process_request_header(request)
 end
 
 local function process_request(request)
-    local request_line, method, path, proto, bad = process_request_line(
+    local request_line, _, path, proto, bad = process_request_line(
         request
     )
-    local response = nil
+    local response
 
     if bad then
-        response = Response:bad(proto or "HTTP/1.1")
+        response = Response.bad(proto or "HTTP/1.1")
     else
         local if_none_match = process_request_header(request)
-        local normalized = Path:new(path).value
+        local normalized = Path.new(path).value
 
         if not routing:has_path(normalized) then
-            response = Response:not_found(proto)
+            response = Response.not_found(proto)
         else
             local value = routing.paths[normalized]
 
             if if_none_match and if_none_match == value.etag then
-                response = Response:not_modified(proto, value.etag)
+                response = Response.not_modified(proto, value.etag)
             else
-                response = Response:ok(
+                response = Response.ok(
                     proto,
                     value.etag,
                     value.content_type,
@@ -424,7 +424,7 @@ end
 
 local Djotter = {}
 
-function Djotter:new()
+function Djotter.new()
     local state = {
         template = (
             "<html>" ..
@@ -570,9 +570,9 @@ M.config = vim.deepcopy(default_config)
 function M.init(config)
     M.config = vim.tbl_extend("force", default_config, config or {})
 
-    djotter = Djotter:new()
-    routing = Routing:new(djotter)
-    log = Logger:new(M.config.log_filename)
+    log = Logger.new(M.config.log_filename)
+    djotter = Djotter.new()
+    routing = Routing.new(djotter)
 
     local new_cmd = vim.api.nvim_create_user_command
     new_cmd("WSAddBuffer", ws_add_buffer, { nargs = "*" })
@@ -587,7 +587,7 @@ function M.init(config)
     local host = M.config.host
     local port = M.config.port
 
-    local server = create_server(host, port, function(socket)
+    create_server(host, port, function(socket)
         local request = ""
         local result = nil
 
@@ -607,7 +607,7 @@ function M.init(config)
                 result = {
                     proto = "HTTP/1.1",
                     request = request,
-                    response = Response:bad("HTTP/1.1")
+                    response = Response.bad("HTTP/1.1")
                 }
             elseif request:match("\r?\n\r?\n$") then
                 result = process_request(request)
