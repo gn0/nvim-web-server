@@ -2,6 +2,7 @@ local default_config = {
     host = "127.0.0.1",
     port = 4999,
     log_filename = nil,
+    log_each_request = false,
 
     -- NOTE Keep-alive means that we run out of sockets real quick under
     -- load, and clients will begin getting "connection reset by peer"
@@ -52,7 +53,7 @@ function Logger.new(filename)
     return setmetatable(state, { __index = Logger })
 end
 
-function Logger:print(...)
+local function print_to_log(self, ...)
     local message = string.format(...)
 
     vim.schedule(function()
@@ -72,12 +73,15 @@ function Logger:print(...)
     end)
 end
 
+Logger.info = print_to_log
+Logger.request = print_to_log
+
 local log = nil
 
 -- TODO Wrap network I/O calls in `pcall()` in case of failure?
 
 local function create_server(host, port, on_connect)
-    log:print("Initializing server at %s:%d.", host, port)
+    log:info("Initializing server at %s:%d.", host, port)
 
     local server = vim.uv.new_tcp()
     server:bind(host, port)
@@ -230,7 +234,7 @@ function Routing:add_path(path, value)
         vim.api.nvim_buf_get_name(value.buf_id) or "[unnamed]"
     )
 
-    log:print(
+    log:info(
         "Routing path '%s' to buffer '%s' (%s).",
         normalized,
         value.buf_name,
@@ -259,7 +263,7 @@ function Routing:update_content(buf_id)
 
     local value = self.paths[path]
 
-    log:print(
+    log:info(
         "Updating content for path '%s' from buffer '%s'.",
         path,
         value.buf_name
@@ -303,7 +307,7 @@ function Routing:update_djot_paths()
 end
 
 function Routing:delete_path(path)
-    log:print("Deleting path '%s'.", path)
+    log:info("Deleting path '%s'.", path)
 
     local value = self.paths[path]
 
@@ -535,7 +539,7 @@ local function ws_paths()
             length = value.content:len()
         end
 
-        log:print(
+        log:info(
             "Path '%s' is routed to '%s' (%s, length %d).",
             path,
             value.buf_name,
@@ -547,7 +551,7 @@ end
 
 local function ws_set_buffer_as_template()
     if djotter.template_buf_name then
-        log:print(
+        log:info(
             "Unsetting '%s' as template.", djotter.template_buf_name
         )
 
@@ -557,7 +561,7 @@ local function ws_set_buffer_as_template()
     local buf_id = vim.fn.bufnr()
     local buf_name = vim.api.nvim_buf_get_name(buf_id)
 
-    log:print("Setting '%s' as template.", buf_name)
+    log:info("Setting '%s' as template.", buf_name)
 
     local function update_template()
         djotter.template = get_buffer_content(buf_id)
@@ -582,6 +586,10 @@ function M.init(config)
     djotter = Djotter.new()
     routing = Routing.new(djotter)
 
+    if not M.config.log_each_request then
+        Logger.request = function() end
+    end
+
     if not M.config.keep_alive then
         response_connection = "Connection: close\n"
     end
@@ -605,7 +613,7 @@ function M.init(config)
 
         socket:read_start(function(error, chunk)
             if error then
-                log:print("Read error: '%s'.", error)
+                log:info("Read error: '%s'.", error)
                 socket:close()
                 return
             elseif not chunk then
@@ -626,7 +634,7 @@ function M.init(config)
             end
 
             if result ~= nil then
-                log:print(
+                log:request(
                     "%d %s %d %d '%s'",
                     result.response.status,
                     socket:getsockname().ip,
