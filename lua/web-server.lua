@@ -1,3 +1,19 @@
+local default_config = {
+    host = "127.0.0.1",
+    port = 4999,
+    log_filename = nil,
+
+    -- NOTE Keep-alive means that we run out of sockets real quick under
+    -- load, and clients will begin getting "connection reset by peer"
+    -- errors.
+    --
+    keep_alive = false
+}
+
+local M = {}
+
+M.config = vim.deepcopy(default_config)
+
 local djot = require("web-server.djot")
 
 local Logger = {}
@@ -78,6 +94,8 @@ end
 
 local Response = { status = nil, value = nil }
 
+local response_connection = "Connection: keep-alive\n"
+
 function Response.ok(proto, etag, content_type, content)
     return setmetatable({
         status = 200,
@@ -87,7 +105,7 @@ function Response.ok(proto, etag, content_type, content)
             'ETag: "' .. etag .. '"\n' ..
             "Content-Type: %s\n" ..
             "Content-Length: %d\n" ..
-            "Connection: keep-alive\n" ..
+            response_connection ..
             "\n" ..
             "%s\n",
             proto, content_type, content:len(), content
@@ -104,7 +122,7 @@ function Response.not_modified(proto, etag)
             proto .. " 304 Not Modified\n" ..
             "Server: nvim-web-server\n" ..
             'ETag: "' .. etag .. '"\n' ..
-            -- "Connection: keep-alive\n" ..
+            response_connection ..
             "\n"
         )
     }, {
@@ -163,7 +181,7 @@ function Response.not_found(proto)
             "Server: nvim-web-server\n" ..
             "Content-Type: text/html\n" ..
             "Content-Length: " .. content:len() .. "\n" ..
-            "Connection: keep-alive\n" ..
+            response_connection ..
             "\n" ..
             content
         )
@@ -557,22 +575,16 @@ local function ws_set_buffer_as_template()
     update_template()
 end
 
-local M = {}
-
-local default_config = {
-    host = "127.0.0.1",
-    port = 4999,
-    log_filename = nil
-}
-
-M.config = vim.deepcopy(default_config)
-
 function M.init(config)
     M.config = vim.tbl_extend("force", default_config, config or {})
 
     log = Logger.new(M.config.log_filename)
     djotter = Djotter.new()
     routing = Routing.new(djotter)
+
+    if not M.config.keep_alive then
+        response_connection = "Connection: close\n"
+    end
 
     local new_cmd = vim.api.nvim_create_user_command
     new_cmd("WSAddBuffer", ws_add_buffer, { nargs = "*" })
@@ -625,7 +637,8 @@ function M.init(config)
                 socket:write(result.response.value)
 
                 local keep_alive = (
-                    result.proto ~= "HTTP/1.0"
+                    M.config.keep_alive
+                    and result.proto ~= "HTTP/1.0"
                     and result.response.status ~= 400
                 )
 
