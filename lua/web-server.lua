@@ -1,3 +1,9 @@
+--- An HTTP server for Neovim.
+-- @module web-server
+-- @author Gábor Nyéki
+-- @license MIT
+--
+
 local default_config = {
     host = "127.0.0.1",
     port = 4999,
@@ -11,12 +17,29 @@ local default_config = {
     keep_alive = false
 }
 
+--- Module class.
 local M = {}
 
+--- Server configuration.
+-- @field host (string) IP address to listen on
+-- @field port (integer) TCP port to listen on
+-- @field[opt] log_filename (string) file to save the server's log
+--     buffer
+-- @field log_each_request (boolean) include requests in the server log
+-- @field keep_alive (boolean) whether to support Connection: keep-alive
+-- @table config
 M.config = vim.deepcopy(default_config)
 
 local djot = require("web-server.djot")
 
+--- Manages a buffer that contains the server log.
+-- @field buf_id (integer) the ID of the log buffer
+-- @field win_id (integer) the ID of the window in which the log buffer
+--     is displayed
+-- @field empty (boolean) whether the log buffer is currently empty
+-- @field[opt] timer (uv_timer_t userdata) a timer that periodically
+--     saves the buffer to the file specified by `log_filename` in the
+--     server configuration
 local Logger = {}
 
 function Logger.new(filename)
@@ -53,6 +76,7 @@ function Logger.new(filename)
     return setmetatable(state, { __index = Logger })
 end
 
+--- Adds a line to the log buffer, prepending a timestamp.
 local function print_to_log(self, ...)
     local message = string.format(...)
 
@@ -73,7 +97,14 @@ local function print_to_log(self, ...)
     end)
 end
 
+--- Adds a piece of information to the log buffer.
+-- @function Logger:info
 Logger.info = print_to_log
+
+--- Adds a client request to the log buffer.
+-- Overwritten if `log_each_request` is `false` in the server
+-- configuration.
+-- @function Logger:request
 Logger.request = print_to_log
 
 local log = nil
@@ -96,10 +127,14 @@ local function create_server(host, port, on_connect)
     return server
 end
 
+--- An HTTP response.
+-- @field status (integer) HTTP status code
+-- @field value (string) response header and body to send to the client
 local Response = { status = nil, value = nil }
 
 local response_connection = "Connection: keep-alive\n"
 
+--- Status code 200.
 function Response.ok(proto, etag, content_type, content)
     return setmetatable({
         status = 200,
@@ -119,6 +154,7 @@ function Response.ok(proto, etag, content_type, content)
     })
 end
 
+--- Status code 304.
 function Response.not_modified(proto, etag)
     return setmetatable({
         status = 304,
@@ -134,6 +170,7 @@ function Response.not_modified(proto, etag)
     })
 end
 
+--- Status code 400.
 function Response.bad(proto)
     local content = (
         "<!DOCTYPE html>" ..
@@ -164,6 +201,7 @@ function Response.bad(proto)
     })
 end
 
+--- Status code 404.
 function Response.not_found(proto)
     local content = (
             "<!DOCTYPE html>" ..
@@ -194,6 +232,27 @@ function Response.not_found(proto)
     })
 end
 
+--- Normalizes paths.
+-- @field value (string) normalized path
+-- @field[opt] query_string (string) the part of the requested path that
+--     begins with a `?`
+-- @usage
+-- -- A path with extra slashes and without a query string.
+-- --
+--
+-- local path_a = Path.new("/foo//bar/")
+--
+-- assert(path_a.value == "/foo/bar")
+-- assert(not path_a.query_string)
+--
+-- -- A path with a query string.
+-- --
+--
+-- local path_b = Path.new("/foo?bar=baz&asd=f")
+--
+-- assert(path_b.value == "/foo")
+-- assert(path_b.query_string == "?bar=baz&asd=f")
+--
 local Path = {}
 
 function Path.new(raw)
@@ -212,8 +271,29 @@ function Path.new(raw)
     })
 end
 
+--- Maps paths to content.
+-- @field djotter (Djotter) converter from Djot to HTML
+-- @field paths (@{paths}) the keys of this table are normalized paths,
+--     the values are tables
 local Routing = {}
 
+--- Path routing table.
+-- The keys are normalized paths.
+-- The values are @{content} tables.
+-- @table paths
+
+--- Content table.
+-- @field buf_id (integer)
+-- @field buf_name (string)
+-- @field buf_type (string) e.g., "text/djot", "image/png"
+-- @field content_type (string) e.g., "text/html", "image/png"
+-- @field content (string) message body to send to clients
+-- @field etag (string) SHA-256 hash of content
+-- @field autocmd_id (integer) ID of autocmd that updates content if
+--     buffer changes
+-- @table content
+
+--- Constructs an empty routing table with a Djot converter.
 function Routing.new(djotter)
     return setmetatable({
         djotter = djotter,
@@ -340,6 +420,13 @@ end
 
 local routing = nil
 
+--- Parses the first line of the client's request.
+-- @param request (string)
+-- @return (string) first line of the client's request
+-- @return (string) method (e.g., GET, POST)
+-- @return (string) path requested by the client
+-- @return (string) protocol (e.g., HTTP/1.1)
+-- @return (boolean) whether the server considers the request malformed
 local function process_request_line(request)
     local request_line = request:match("[^\r\n]*")
     local method = nil
@@ -367,6 +454,10 @@ local function process_request_line(request)
     return request_line, method, path, proto, bad
 end
 
+--- Looks for "If-None-Match" in the client's request header.
+-- @param request (string)
+-- @return[1] (string) "tag" in "If-None-Match: tag"
+-- @return[2] nil if the client sent no "If-None-Match"
 local function process_request_header(request)
     for line in string.gmatch(request, "[^\r\n]+") do
         local field_name = line:match("^If%-None%-Match: *")
@@ -383,6 +474,10 @@ local function process_request_header(request)
     end
 end
 
+--- Parses the client's request and prepares the response.
+-- @param request (string)
+-- @return (table) request protocol, request line, and the corresponding
+--     Response object
 local function process_request(request)
     local request_line, _, path, proto, bad = process_request_line(
         request
@@ -444,6 +539,9 @@ local function get_first_header(html)
     return nil
 end
 
+--- Converts Djot markup to HTML.  It wraps John MacFarlane's
+-- "djot.lua".
+-- @field template (string)
 local Djotter = {}
 
 function Djotter.new()
@@ -460,6 +558,9 @@ function Djotter.new()
     return setmetatable(state, { __index = Djotter })
 end
 
+--- Converts the input string from Djot to HTML.
+-- @param input (string)
+-- @return (string)
 function Djotter:to_html(input)
     local ast = djot.parse(input, false, function(warning)
         cmd_error(
@@ -484,6 +585,7 @@ end
 
 local djotter = nil
 
+--- Command-line command to add the current buffer to the routing table.
 local function ws_add_buffer(opts)
     if #opts.fargs == 0 or #opts.fargs > 2 then
         cmd_error("Usage: :WSAddBuffer <path> [content-type]")
@@ -517,6 +619,7 @@ local function ws_add_buffer(opts)
     routing:update_content(buf_id)
 end
 
+--- Command-line command to delete a path from the routing table.
 local function ws_delete_path(opts)
     if #opts.fargs ~= 1 then
         cmd_error("Usage: :WSDeletePath <path>")
@@ -532,6 +635,8 @@ local function ws_delete_path(opts)
     end
 end
 
+--- Command-line command to write all currently routed paths to the
+-- server log.
 local function ws_paths()
     for path, value in pairs(routing.paths) do
         local length = 0
@@ -549,6 +654,8 @@ local function ws_paths()
     end
 end
 
+--- Command-line command to set the current buffer as the HTML template
+-- used by the Djot converter.
 local function ws_set_buffer_as_template()
     if djotter.template_buf_name then
         log:info(
@@ -579,6 +686,17 @@ local function ws_set_buffer_as_template()
     update_template()
 end
 
+--- Launches the HTTP server.
+-- @param config (@{config})
+-- @usage
+-- -- Launch the web server on a different port from the default.
+-- --
+-- require("web-server").init({ port = 8080 })
+--
+-- -- Launch the web server with the log buffer saved to a file.
+-- --
+-- require("web-server").init({ log_filename = "server.log" })
+--
 function M.init(config)
     M.config = vim.tbl_extend("force", default_config, config or {})
 
