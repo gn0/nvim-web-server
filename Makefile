@@ -8,7 +8,7 @@ lint:
 test:
 	$(foreach x,djotter path request string, \
 		nvim --headless --clean --noplugin -u scripts/minimal_init.vim \
-			-l tests/$(x).lua;)
+			-l tests/$(x).lua &&) true
 
 luadoc: luadoc/index.html
 
