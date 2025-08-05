@@ -1,9 +1,14 @@
-.PHONY: build lint luadoc
+.PHONY: build lint luadoc test
 
-build: lint luadoc
+build: lint test luadoc
 
 lint:
 	luacheck lua/web-server.lua
+
+test:
+	$(foreach x,djotter path request, \
+		nvim --headless --clean --noplugin -u scripts/minimal_init.vim \
+			-l tests/$(x).lua;)
 
 luadoc: luadoc/index.html
 

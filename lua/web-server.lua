@@ -780,4 +780,13 @@ function M.init(config)
     end)
 end
 
+--- Exported for testing.
+M.internal = {
+    Djotter = Djotter,
+    Path = Path,
+    get_first_header = get_first_header,
+    process_request_line = process_request_line,
+    process_request_header = process_request_header,
+}
+
 return M
