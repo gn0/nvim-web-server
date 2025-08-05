@@ -76,13 +76,17 @@ function Logger.new(filename)
     return setmetatable(state, { __index = Logger })
 end
 
+local function escape(str)
+    return str:gsub("\r", "\\r"):gsub("\n", "\\n")
+end
+
 --- Adds a line to the log buffer, prepending a timestamp.
 local function print_to_log(self, ...)
     local message = string.format(...)
 
     vim.schedule(function()
         local line = (
-            vim.fn.strftime("[%Y-%m-%d %H:%M:%S] ") .. message:escape()
+            vim.fn.strftime("[%Y-%m-%d %H:%M:%S] ") .. escape(message)
         )
 
         vim.api.nvim_buf_set_lines(self.buf_id, -1, -1, true, { line })
@@ -515,18 +519,6 @@ local function process_request(request)
     }
 end
 
-function string:truncate(max_len)
-    if self:len() > max_len then
-        return self:sub(1, max_len) .. "..."
-    end
-
-    return self
-end
-
-function string:escape()
-    return self:gsub("\r", "\\r"):gsub("\n", "\\n")
-end
-
 local function cmd_error(...)
     vim.api.nvim_echo({{ string.format(...) }}, true, { err = true })
 end
@@ -686,6 +678,14 @@ local function ws_set_buffer_as_template()
     update_template()
 end
 
+local function truncate(str, max_len)
+    if str:len() > max_len then
+        return str:sub(1, max_len) .. "..."
+    end
+
+    return str
+end
+
 --- Launches the HTTP server.
 -- @param config (@{config})
 -- @usage
@@ -758,7 +758,7 @@ function M.init(config)
                     socket:getsockname().ip,
                     request:len(),
                     result.response.value:len(),
-                    result.request:truncate(40)
+                    truncate(result.request, 40)
                 )
                 socket:write(result.response.value)
 
