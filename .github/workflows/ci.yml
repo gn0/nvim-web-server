@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  lint_and_tests:
+    name: lint and unit tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        rev: [nightly, stable, v0.10.0]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: rhysd/action-setup-vim@v1
+      with:
+        neovim: true
+        version: ${{ matrix.rev }}
+
+    - name: Install luacheck
+      run: sudo apt-get update && sudo apt-get install -y lua-check
+
+    - name: Run lint
+      run: make lint
+
+    - name: Run tests
+      run: |
+        nvim --version
+        make test
