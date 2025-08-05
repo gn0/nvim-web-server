@@ -150,7 +150,7 @@ function Response.ok(proto, etag, content_type, content)
             "Content-Length: %d\n" ..
             response_connection ..
             "\n" ..
-            "%s\n",
+            "%s",
             proto, content_type, content:len(), content
         )
     }, {
@@ -334,7 +334,7 @@ local function get_buffer_content(buf_id)
     return table.concat(
         vim.api.nvim_buf_get_lines(buf_id, 0, -1, true),
         "\n"
-    )
+    ) .. "\n"
 end
 
 function Routing:update_content(buf_id)

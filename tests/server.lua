@@ -34,6 +34,7 @@ function test(opts)
             first_line:match("^HTTP/1.[01] ([0-9]+)")
         )
         local content_type = nil
+        local content_length = nil
         local content = nil
         local is_content = false
 
@@ -51,12 +52,17 @@ function test(opts)
                     line:match("^Content%-Type: (.*)")
                     or content_type
                 )
+                content_length = (
+                    tonumber(line:match("^Content%-Length: (.*)"))
+                    or content_length
+                )
             end
         end
 
         opts.callback({
             status = status,
             content_type = content_type,
+            content_length = content_length,
             content = content,
         })
 
@@ -75,6 +81,7 @@ test({
     callback = function(result)
         assert(result.status == 200, result.status)
         assert(result.content_type == "text/html", result.content_type)
+        assert(result.content_length == 117, result.content_length)
         assert(
             result.content ==
                 "<title>foo</title>\n"
@@ -90,10 +97,11 @@ test({
 
 test({
     path = "/",
-    etag = "6d63a141fe09fc0a7343cedd9e7b6b6456379d8b1f522810988b7faea99f600e",
+    etag = "a9711f82001d1ecfc2a95e63dead45a1895f4869f9d4d1cac29a918e29c7c96e",
     callback = function(result)
         assert(result.status == 304, result.status)
         assert(not result.content_type, result.content_type)
+        assert(not result.content_length, result.content_length)
         assert(not result.content, result.content)
     end
 })
@@ -110,6 +118,7 @@ test({
 
         assert(result.status == 200, result.status)
         assert(result.content_type == "image/png", result.content_type)
+        assert(result.content_length == 49959, result.content_length)
         assert(result.content:match("^" .. png_magic))
     end
 })
@@ -119,6 +128,7 @@ test({
     callback = function(result)
         assert(result.status == 200, result.status)
         assert(result.content_type == "text/html", result.content_type)
+        assert(result.content_length == 29, result.content_length)
         assert(
             result.content ==
                 "<h1>page</h1>\n"
