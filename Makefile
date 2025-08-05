@@ -6,7 +6,7 @@ lint:
 	luacheck lua/web-server.lua
 
 test:
-	$(foreach x,djotter path request, \
+	$(foreach x,djotter path request string, \
 		nvim --headless --clean --noplugin -u scripts/minimal_init.vim \
 			-l tests/$(x).lua;)
 

@@ -784,9 +784,11 @@ end
 M.internal = {
     Djotter = Djotter,
     Path = Path,
+    escape = escape,
     get_first_header = get_first_header,
     process_request_line = process_request_line,
     process_request_header = process_request_header,
+    truncate = truncate,
 }
 
 return M
