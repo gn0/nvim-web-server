@@ -326,7 +326,7 @@ function Routing:add_path(path, value)
     return true
 end
 
-function get_buffer_content(buf_id)
+local function get_buffer_content(buf_id)
     return table.concat(
         vim.api.nvim_buf_get_lines(buf_id, 0, -1, true),
         "\n"
