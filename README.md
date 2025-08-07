@@ -87,6 +87,7 @@ This is the default configuration:
 | `port`             | `4999`        |
 | `log_filename`     | `nil`         |
 | `log_each_request` | `false`       |
+| `log_views_period` | `0`           |
 | `keep_alive`       | `false`       |
 
 ## Installation
