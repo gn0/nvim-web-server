@@ -10,6 +10,7 @@ local default_config = {
     log_filename = nil,
     log_each_request = false,
     log_views_period = 0,
+    log_resource_use_period = 0,
 
     -- NOTE Keep-alive means that we run out of sockets real quick under
     -- load, and clients will begin getting "connection reset by peer"
@@ -776,6 +777,57 @@ end
 
 local views = nil
 
+--- Periodically logs resource use if a timer is running.
+-- @field[opt] timer (uv_timer_t userdata) a timer that periodically
+--     logs resource use
+local ResourceUse = {}
+
+function ResourceUse.new()
+    local state = { timer = nil }
+    return setmetatable(state, { __index = ResourceUse })
+end
+
+--- Sets up a timer to log resource use.
+-- @param dur_minutes (integer) log resource use at this interval
+function ResourceUse:start_timer(dur_minutes)
+    local dur_ms = dur_minutes * 60 * 1000
+
+    self.timer = vim.uv.new_timer()
+    self.timer:start(dur_ms, dur_ms, vim.schedule_wrap(function()
+        local rusage = vim.uv.getrusage()
+        local rss = { -- In MBs.
+            current = vim.uv.resident_set_memory() / 1024 / 1024,
+            max = rusage.maxrss / 1024
+        }
+        local cpu = { -- In seconds.
+            user = rusage.utime.sec + rusage.utime.usec / 1000 / 1000,
+            sys = rusage.stime.sec + rusage.stime.usec / 1000 / 1000
+        }
+        local ipc = { sent = rusage.msgsnd, recvd = rusage.msgrcv }
+        local block = { in_ = rusage.inblock, out = rusage.oublock }
+        local signals = rusage.nsignals
+        local ctx = { vol = rusage.nvcsw, invol = rusage.nivcsw }
+
+        log:info("Resource use:")
+        log:info(
+            "- RSS: %.2f MB (current), %.2f MB (max)",
+            rss.current,
+            rss.max
+        )
+        log:info("- CPU: %.2fs (user), %.2fs (sys)", cpu.user, cpu.sys)
+        log:info("- IPC: %d (sent), %d (received)", ipc.sent, ipc.recvd)
+        log:info("- Block ops: %d (in), %d (out)", block.in_, block.out)
+        log:info("- Signals: %d", signals)
+        log:info(
+            "- Context switches: %d (voluntary), %d (involuntary)",
+            ctx.vol,
+            ctx.invol
+        )
+    end))
+end
+
+local resource_use = nil
+
 --- Launches the HTTP server.
 -- @param config (@{config})
 -- @usage
@@ -794,6 +846,7 @@ function M.init(config)
     djotter = Djotter.new()
     routing = Routing.new(djotter)
     views = Views.new()
+    resource_use = ResourceUse.new()
 
     if not M.config.log_each_request then
         Logger.request = function() end
@@ -801,6 +854,10 @@ function M.init(config)
 
     if M.config.log_views_period > 0 then
         views:start_timer(M.config.log_views_period)
+    end
+
+    if M.config.log_resource_use_period > 0 then
+        resource_use:start_timer(M.config.log_resource_use_period)
     end
 
     if not M.config.keep_alive then

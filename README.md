@@ -81,14 +81,15 @@ For example, if you want the server log to be periodically saved to a file:
 
 This is the default configuration:
 
-| Option             | Default value |
-|--------------------|---------------|
-| `host`             | `"127.0.0.1"` |
-| `port`             | `4999`        |
-| `log_filename`     | `nil`         |
-| `log_each_request` | `false`       |
-| `log_views_period` | `0`           |
-| `keep_alive`       | `false`       |
+| Option                    | Default value |
+|---------------------------|---------------|
+| `host`                    | `"127.0.0.1"` |
+| `port`                    | `4999`        |
+| `log_filename`            | `nil`         |
+| `log_each_request`        | `false`       |
+| `log_views_period`        | `0`           |
+| `log_resource_use_period` | `0`           |
+| `keep_alive`              | `false`       |
 
 ## Installation
 
