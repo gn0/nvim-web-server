@@ -227,7 +227,7 @@ function Response.not_found(proto)
     return setmetatable({
         status = 404,
         value = (
-            proto .. " 404 Bad Request\n" ..
+            proto .. " 404 Not Found\n" ..
             "Server: nvim-web-server\n" ..
             "Content-Type: text/html\n" ..
             "Content-Length: " .. content:len() .. "\n" ..
