@@ -1,12 +1,5 @@
 local M = require("web-server")
 
-local f = M.internal.get_first_header
-assert(f("<body><h1>foo</h1></body>") == "foo")
-assert(f("<body><h1>foo</h1><h1>bar</h1></body>") == "foo")
-assert(f("<body><h1>foo</h1><h2>bar</h2></body>") == "foo")
-assert(f("<body><h2>foo</h2><h1>bar</h1></body>") == "foo")
-assert(not f("<body><p>foo</p><p>bar</p></body>"))
-
 for i, case in ipairs({
     { t = "{{ title }}", d = "# foo\n\n## bar\n\nbaz\n", h = "foo" },
     { t = "{{ title }}", d = "x\n\n# foo\n\n## bar\n\nbaz\n", h = "foo" },

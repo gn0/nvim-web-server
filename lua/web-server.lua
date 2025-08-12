@@ -533,14 +533,6 @@ local function cmd_error(...)
     vim.api.nvim_echo({{ string.format(...) }}, true, { err = true })
 end
 
-local function get_first_header(html)
-    local snippet = html:match("<h[1-9]>[^<]*</h[1-9]>")
-    if snippet then
-        return snippet:sub(5, -6)
-    end
-    return nil
-end
-
 --- Converts Djot markup to HTML.  It wraps John MacFarlane's
 -- "djot.lua".
 -- @field template (string)
@@ -575,7 +567,7 @@ function Djotter:to_html(input)
     local content = djot.render_html(ast)
     local content_escaped = content:gsub("%%", "%%%%")
 
-    local title = get_first_header(content) or ""
+    local title = content:match("<h[1-9]>([^<]*)</h[1-9]>") or ""
     local title_escaped = title:gsub("%%", "%%%%")
 
     return (
@@ -946,7 +938,6 @@ M.internal = {
     Djotter = Djotter,
     Path = Path,
     escape = escape,
-    get_first_header = get_first_header,
     process_request_line = process_request_line,
     process_request_header = process_request_header,
     truncate = truncate,
