@@ -363,7 +363,9 @@ function Routing:update_content(buf_id)
 
     if not buf_type:match("^text/") then
         local file_path = vim.api.nvim_buf_get_name(0)
-        content = io.open(file_path):read("*a")
+        local handle = io.open(file_path)
+        content = handle:read("*a")
+        handle:close()
     else
         content = get_buffer_content(buf_id)
     end
