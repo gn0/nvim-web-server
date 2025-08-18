@@ -1,5 +1,7 @@
 # nvim-web-server
 
+[![CI](https://github.com/gn0/nvim-web-server/actions/workflows/ci.yml/badge.svg)](https://github.com/gn0/nvim-web-server/actions/workflows/ci.yml)
+
 This plugin turns Neovim into a web server.
 It's written in Lua using only Neovim's API, so no external tools are required.
 
