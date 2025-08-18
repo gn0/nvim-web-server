@@ -1,5 +1,5 @@
-local M = require("web-server")
-local f = M.internal.Path.new
+local Path = require("web-server.path")
+local f = Path.new
 
 for i, case in ipairs({
     { path = "/", normalized = "/", query_string = nil },

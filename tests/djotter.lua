@@ -1,4 +1,4 @@
-local M = require("web-server")
+local Djotter = require("web-server.djotter")
 
 for i, case in ipairs({
     { t = "{{ title }}", d = "# foo\n\n## bar\n\nbaz\n", h = "foo" },
@@ -27,7 +27,7 @@ for i, case in ipairs({
         .. "</section>\n"
         .. "</body>" },
 }) do
-    local djotter = M.internal.Djotter.new()
+    local djotter = Djotter.new()
 
     djotter.template = case.t
 

@@ -19,6 +19,11 @@ local default_config = {
     keep_alive = false
 }
 
+local Djotter = require("web-server.djotter")
+local Path = require("web-server.path")
+
+local djotter = nil
+
 --- Module class.
 local M = {}
 
@@ -237,45 +242,6 @@ function Response.not_found(proto)
         )
     }, {
         __index = Response
-    })
-end
-
---- Normalizes paths.
--- @field value (string) normalized path
--- @field[opt] query_string (string) the part of the requested path that
---     begins with a `?`
--- @usage
--- -- A path with extra slashes and without a query string.
--- --
---
--- local path_a = Path.new("/foo//bar/")
---
--- assert(path_a.value == "/foo/bar")
--- assert(not path_a.query_string)
---
--- -- A path with a query string.
--- --
---
--- local path_b = Path.new("/foo?bar=baz&asd=f")
---
--- assert(path_b.value == "/foo")
--- assert(path_b.query_string == "?bar=baz&asd=f")
---
-local Path = {}
-
-function Path.new(raw)
-    local query_string = raw:match("?.*")
-    local normalized = raw:gsub("?.*", ""):gsub("/+", "/")
-
-    if normalized ~= "/" then
-        normalized = normalized:gsub("/$", "")
-    end
-
-    return setmetatable({
-        value = normalized,
-        query_string = query_string
-    }, {
-        __index = Path
     })
 end
 
@@ -532,52 +498,6 @@ end
 local function cmd_error(...)
     vim.api.nvim_echo({{ string.format(...) }}, true, { err = true })
 end
-
---- Converts Djot markup to HTML.  It wraps John MacFarlane's
--- "djot.lua".
--- @field template (string)
-local Djotter = {}
-
-function Djotter.new()
-    local state = {
-        template = (
-            "<html>" ..
-            "<head>" ..
-            "<title>{{ title }}</title>" ..
-            "</head>" ..
-            "<body>{{ content }}</body>" ..
-            "</html>"
-        )
-    }
-    return setmetatable(state, { __index = Djotter })
-end
-
---- Converts the input string from Djot to HTML.
--- @param input (string)
--- @return (string)
-function Djotter:to_html(input)
-    local ast = djot.parse(input, false, function(warning)
-        cmd_error(
-            "Djot parse error: %s at byte position %d",
-            warning.message,
-            warning.pos
-        )
-    end)
-
-    local content = djot.render_html(ast)
-    local content_escaped = content:gsub("%%", "%%%%")
-
-    local title = content:match("<h[1-9]>([^<]*)</h[1-9]>") or ""
-    local title_escaped = title:gsub("%%", "%%%%")
-
-    return (
-        self.template
-        :gsub("{{ title }}", title_escaped)
-        :gsub("{{ content }}", content_escaped)
-    )
-end
-
-local djotter = nil
 
 --- Command-line command to add the current buffer to the routing table.
 local function ws_add_buffer(opts)
@@ -935,8 +855,6 @@ end
 
 --- Exported for testing.
 M.internal = {
-    Djotter = Djotter,
-    Path = Path,
     escape = escape,
     process_request_line = process_request_line,
     process_request_header = process_request_header,

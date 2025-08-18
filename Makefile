@@ -10,11 +10,16 @@ test:
 		nvim --headless --clean --noplugin -u scripts/minimal_init.vim \
 			-l tests/$(x).lua &&) true
 
-luadoc: luadoc/index.html
+luadoc: $(foreach x,init djotter path,luadoc/$(x).html)
 
-luadoc/index.html: lua/web-server.lua
+luadoc/%.html: lua/web-server/%.lua
 	[ -d luadoc ] || mkdir luadoc
-	ldoc --all --verbose --dir luadoc $<
+	ldoc \
+		--all \
+		--verbose \
+		--dir luadoc \
+		--output $(basename $(notdir $@)) \
+		$<
 
 .PHONY: clean
 clean:
