@@ -6,6 +6,7 @@
 --
 
 local djot = require("web-server.djot")
+local cmd_error = require("web-server.common").cmd_error
 
 --- Module class.
 -- @field template (string)

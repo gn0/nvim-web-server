@@ -21,6 +21,7 @@ local default_config = {
 
 local Djotter = require("web-server.djotter")
 local Path = require("web-server.path")
+local cmd_error = require("web-server.common").cmd_error
 
 local djotter = nil
 
@@ -38,8 +39,6 @@ local M = {}
 -- @field keep_alive (boolean) whether to support Connection: keep-alive
 -- @table config
 M.config = vim.deepcopy(default_config)
-
-local djot = require("web-server.djot")
 
 --- Manages a buffer that contains the server log.
 -- @field buf_id (integer) the ID of the log buffer
@@ -268,9 +267,9 @@ local Routing = {}
 -- @table content
 
 --- Constructs an empty routing table with a Djot converter.
-function Routing.new(djotter)
+function Routing.new(this_djotter)
     return setmetatable({
-        djotter = djotter,
+        djotter = this_djotter,
         paths = {}
     }, {
         __index = Routing
@@ -493,10 +492,6 @@ local function process_request(request)
         request = request_line,
         response = response
     }
-end
-
-local function cmd_error(...)
-    vim.api.nvim_echo({{ string.format(...) }}, true, { err = true })
 end
 
 --- Command-line command to add the current buffer to the routing table.
