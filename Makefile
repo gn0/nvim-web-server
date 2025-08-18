@@ -1,12 +1,16 @@
+MODULES = init djotter path
+TESTS = djotter path request server string
+
 .PHONY: build lint luadoc test
 
 build: lint test luadoc
 
 lint:
-	luacheck lua/web-server.lua
+	$(foreach x,$(MODULES), \
+		luacheck lua/web-server/$(x).lua &&) true
 
 test:
-	$(foreach x,djotter path request server string, \
+	$(foreach x,$(TESTS), \
 		nvim --headless --clean --noplugin -u scripts/minimal_init.vim \
 			-l tests/$(x).lua &&) true
 
